@@ -1,5 +1,7 @@
 use std::vec::Vec;
 
+use super::player::{CommandLinePlayer, NaiveAIPlayer, NetworkPlayer};
+
 custom_derive! {
     // TODO: Clone and Copy are possible antipatterns
     #[derive(Clone, Copy, PartialEq, Eq, Hash,
@@ -34,3 +36,9 @@ pub enum Status {
 pub struct Card(pub Suite, pub usize);
 
 pub type PlayerHand = Vec<Card>;
+
+pub enum PlayerType {
+    CommandLine(CommandLinePlayer),
+    NaiveAI(NaiveAIPlayer),
+    Network(NetworkPlayer),
+}

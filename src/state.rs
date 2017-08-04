@@ -6,9 +6,9 @@ use self::rand::Rng;
 use std::collections::HashMap;
 use std::iter;
 use super::config::GameConfig;
-use super::player::{Player, CommandLinePlayer};
+use super::player::{Player, CommandLinePlayer, NaiveAIPlayer, NetworkPlayer};
 
-use super::types::{Action, Card, HintType, PlayerHand, Status, Suite};
+use super::types::{Action, Card, HintType, PlayerHand, PlayerType, Status, Suite};
 
 fn shuffle_and_deal(n_players: usize) -> (Vec<Card>, Vec<PlayerHand>) {
     let mut deck: Vec<Card> = Vec::new();
@@ -38,7 +38,7 @@ fn shuffle_and_deal(n_players: usize) -> (Vec<Card>, Vec<PlayerHand>) {
 
 // Mutable game state
 pub struct State {
-    config: GameConfig,  // can this be const?
+    config: GameConfig, // can this be const?
     information_tokens: usize, // initialized to 8
     fuses: usize, // initialized to 3
     player_hands: Vec<PlayerHand>,
@@ -159,7 +159,7 @@ impl State {
         // TODO Error handling for unwrap
         if self.played_cards.get(suite).unwrap().len() == 0 && value == 1 {
             true
-        } else if self.played_cards.get(suite).unwrap().len() > 0{
+        } else if self.played_cards.get(suite).unwrap().len() > 0 {
             *self.played_cards.get(suite).unwrap().last().unwrap() == value - 1
         } else {
             false
@@ -172,7 +172,7 @@ impl State {
         match hint {
             HintType::SuiteType(hint_suite) => {
                 let hand = self.player_hands.get(receiver_id).unwrap();
-                let mut matched_suite : Vec<usize> = Vec::new();
+                let mut matched_suite: Vec<usize> = Vec::new();
                 for (i, &Card(suite, _)) in hand.iter().enumerate() {
                     if suite == hint_suite {
                         matched_suite.push(i);
@@ -180,15 +180,14 @@ impl State {
                 }
 
                 println!("Player {} has {} {} cards at indices: {}.",
-                       receiver_id,
-                       matched_suite.len(),
-                       self.config.suite_name_map.get(&hint_suite).unwrap(),
-                       matched_suite.iter().format(", ")
-                       );
+                         receiver_id,
+                         matched_suite.len(),
+                         self.config.suite_name_map.get(&hint_suite).unwrap(),
+                         matched_suite.iter().format(", "));
             }
             HintType::Number(hint_value) => {
                 let hand = self.player_hands.get(receiver_id).unwrap();
-                let mut matched_value : Vec<usize> = Vec::new();
+                let mut matched_value: Vec<usize> = Vec::new();
                 for (i, &Card(_, value)) in hand.iter().enumerate() {
                     if value == hint_value {
                         matched_value.push(i);
@@ -196,10 +195,10 @@ impl State {
                 }
 
                 println!("Player {} has {} cards numbered {}: {}",
-                       receiver_id,
-                       matched_value.len(),
-                       hint_value,
-                       matched_value.iter().format(", "));
+                         receiver_id,
+                         matched_value.len(),
+                         hint_value,
+                         matched_value.iter().format(", "));
             }
         }
     }
@@ -220,20 +219,19 @@ impl State {
     }
     */
 
-    // This is a customization point for human or AI players
-    // TODO: duplicate validity checking in this function
-    // TODO: Error handling, more state-machine-y
+    // TODO: "Template-ize" on a Player, calling "get_command"
+    /*
     fn get_player_action(&self, player_id: usize) -> Action {
+        // TODO Better solution for "type erasure" so that we can support an
+        // arbitrary configuration of players
+        // and simply call get_command on the player ID
         if player_id == self.config.client_player {
             CommandLinePlayer::get_command(player_id, &self.config)
         } else {
-            self.ai_move(player_id)
+            NaiveAIPlayer::get_command(player_id, &self.config)
         }
     }
-
-    fn ai_move(&self, player_id: usize) -> Action {
-        Action::Play { index: 0 }
-    }
+    */
 
     fn score(&self) -> usize {
         self.played_cards.values().map(|v| v.len()).sum()
@@ -248,12 +246,27 @@ impl State {
             }
             for &Card(suite, value) in self.player_hands.get(player_id).unwrap() {
                 print!("\t");
-                print!("{}{} ", self.config.suite_name_map.get(&suite).unwrap(), value);
+                print!("{}{} ",
+                       self.config.suite_name_map.get(&suite).unwrap(),
+                       value);
                 print!("\n");
             }
         }
         println!("Fuses: {}", self.fuses);
         println!("Information tokens: {}", self.information_tokens);
+    }
+
+    fn player_action_update<T : Player>(&self, player_id: usize, player: &T) -> Action {
+        player.state_update(self);
+        player.get_command(player_id, &self.config)
+    }
+
+    fn unwrap_player<'a>(&self, player_tag: &'a PlayerType) -> &'a Player {
+        match *player_tag {
+            PlayerType::CommandLine(ref player) => player,
+            PlayerType::NaiveAI(ref player) => player,
+            PlayerType::Network(ref player) => player
+        }
     }
 
     pub fn game_loop(&mut self) {
@@ -264,8 +277,11 @@ impl State {
                     for player_id in 0..self.config.n_players {
                         // print!("{}[2J", 27 as char);
                         self.print();
-                        let action = self.get_player_action(player_id);
-                        status = self.turn(player_id, action);
+                        let player = self.unwrap_player(self.config.players.get(player_id).unwrap());
+
+                        //let action = self.player_action_update(player_id, player);
+                        let action = Action::Play { index: 0 };
+                        //status = self.turn(player_id, action);
                     }
                 }
                 Status::Won => {
