@@ -3,6 +3,10 @@ name = "hanabi"
 version = "0.1.0"
 authors = ["Jackie Kay <jacquelinekay1@gmail.com>"]
 
+[lib]
+name = "hanabi"
+path = "src/mod.rs"
+
 [dependencies]
 custom_derive = "0.1.7"
 enum_derive = "0.1.7"
