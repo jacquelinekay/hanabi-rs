@@ -2,6 +2,7 @@ use std::io;
 use std::str::FromStr;
 
 use super::config::GameConfig;
+use super::display::Display;
 
 use super::state::State;
 use super::types::Action;
@@ -11,7 +12,7 @@ pub trait Player {
     fn get_command(&self, player_id: usize, config: &GameConfig) -> Action;
 
     // Update internal player state based on game client state.
-    fn state_update(&self, state: &State);
+    // fn state_update<T: Display>(&self, state: &State<T>);
 }
 
 fn read_command() -> String {
@@ -79,9 +80,11 @@ impl Player for CommandLinePlayer {
         }
     }
 
-    fn state_update(&self, state: &State) {
+    /*
+    fn state_update<T: Display>(&self, state: &State<T>) {
         // All necessary state is in the client.
     }
+    */
 }
 
 // TODO: Observe the state
@@ -93,20 +96,27 @@ impl Player for NaiveAIPlayer {
         Action::Play { index: 0 }
     }
 
-    fn state_update(&self, state: &State) {
+    /*
+    fn state_update<T: Display>(&self, state: &State<T>) {
         // TODO
     }
+    */
 }
 
 pub struct NetworkPlayer;
+// TODO: metadata for connecting to server
+// server relays moves to other players
 
 impl Player for NetworkPlayer {
     //
     fn get_command(&self, player_id: usize, config: &GameConfig) -> Action {
-        // TODO
+        // TODO block until other player's commands are received
         Action::Play { index: 0 }
     }
-    fn state_update(&self, state: &State) {
+
+    /*
+    fn state_update<T: Display>(&self, state: &State<T>) {
         // TODO
     }
+    */
 }

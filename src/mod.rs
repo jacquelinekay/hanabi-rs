@@ -4,6 +4,7 @@ extern crate custom_derive;
 extern crate enum_derive;
 
 pub mod config;
+pub mod display;
 pub mod state;
 pub mod types;
 pub mod player;

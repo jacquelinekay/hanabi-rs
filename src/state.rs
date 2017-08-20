@@ -6,6 +6,7 @@ use self::rand::Rng;
 use std::collections::HashMap;
 use std::iter;
 use super::config::GameConfig;
+use super::display::Display;
 use super::player::{Player, CommandLinePlayer, NaiveAIPlayer, NetworkPlayer};
 
 use super::types::{Action, Card, HintType, PlayerHand, PlayerType, Status, Suite};
@@ -14,12 +15,14 @@ fn shuffle_and_deal(n_players: usize) -> (Vec<Card>, Vec<PlayerHand>) {
     let mut deck: Vec<Card> = Vec::new();
 
     for suite in Suite::iter_variants() {
-        deck.extend(iter::repeat(1).take(4).map(|v| Card(suite, v)));
+        deck.extend(iter::repeat(1).take(4).map(|value| Card{suite, value}));
 
         for i in 2..5 {
-            deck.extend(iter::repeat(i).take(3).map(|v| Card(suite, v)));
+            deck.extend(iter::repeat(i).take(3).map(|value| Card{suite, value}));
         }
-        deck.push(Card(suite, 5));
+        // TODO: wtf
+        let value = 5;
+        deck.push(Card{suite, value});
     }
 
     rand::thread_rng().shuffle(deck.as_mut_slice());
@@ -37,24 +40,27 @@ fn shuffle_and_deal(n_players: usize) -> (Vec<Card>, Vec<PlayerHand>) {
 }
 
 // Mutable game state
-pub struct State {
-    config: GameConfig, // can this be const?
-    information_tokens: usize, // initialized to 8
-    fuses: usize, // initialized to 3
-    player_hands: Vec<PlayerHand>,
+pub struct State<T: Display> {
+    pub config: GameConfig,
+    display: T,
+    pub information_tokens: usize, // initialized to 8
+    pub fuses: usize, // initialized to 3
+    pub player_hands: Vec<PlayerHand>,
     played_cards: HashMap<Suite, Vec<usize>>,
     deck: Vec<Card>, // randomly shuffled, always has same contents
 }
 
-impl State {
-    pub fn new(config: GameConfig) -> State {
-        let (deck, player_hands) = shuffle_and_deal(config.n_players);
+impl<T: Display> State<T> {
+    pub fn new(config: GameConfig, display: T) -> State<T> {
+        let n_players = config.players.len();
+        let (deck, player_hands) = shuffle_and_deal(n_players);
         let played_cards = Suite::iter_variants()
             .zip(iter::repeat(Vec::new()).take(Suite::iter_variants().len()))
             .collect::<HashMap<Suite, Vec<usize>>>();
         State {
-            // TODO: Consider randomizing player order
+            // TODO: Consider randomizing player order?
             config: config,
+            display: display,
             information_tokens: 8,
             fuses: 3,
             player_hands: player_hands,
@@ -67,32 +73,25 @@ impl State {
         // TODO: Is it valid to pass?
         match action {
             Action::Discard { index } => {
-                let Card(suite, value) = self.discard(player_id, index);
-                println!("Player {} discarded: {}{}",
-                         player_id,
-                         self.config.suite_name_map.get(&suite).unwrap(),
-                         value);
+                let card = self.discard(player_id, index);
+                self.display.discard(player_id, &card);
 
-                // TODO: notify display on game events
                 if !self.deck.is_empty() {
                     // TODO: is it valid to discard if deck empty?
                     self.draw(player_id);
                     Status::InProgress
                 } else {
-                    println!("Oh no! We ran out of cards!");
+                    self.display.lost("Ran out of cards!", self.score());
                     Status::Lost
                 }
             }
             Action::Play { index } => {
-                let Card(played_suite, value) = self.discard(player_id, index);
-                println!("Player {} played: {}{}",
-                         player_id,
-                         self.config.suite_name_map.get(&played_suite).unwrap(),
-                         value);
-                if self.valid_to_play(&played_suite, value) {
-                    self.play_card(&played_suite, value);
+                let card = self.discard(player_id, index);
+                self.display.play(player_id, &card);
+                if self.valid_to_play(&card) {
+                    self.play_card(&card);
 
-                    if self.played_cards.get(&played_suite).unwrap().len() == 5 {
+                    if self.played_cards.get(&card.suite).unwrap().len() == 5 {
                         if self.information_tokens < 8 {
                             self.information_tokens += 1;
                         }
@@ -106,17 +105,15 @@ impl State {
                         }
                     }
                     Status::Won
-                    // TODO: notify display
                 } else {
-                    println!("Invalid move: fuse blown!");
                     self.fuses -= 1;
+                    self.display.fuse(self.fuses);
                     if self.fuses == 0 {
-                        println!("BOOM! You lose!");
+                        self.display.lost("No more fuses!", self.score());
                         Status::Lost
                     } else {
                         Status::InProgress
                     }
-                    // TODO: notify display
                 }
             }
             Action::Hint { receiver_id, hint } => {
@@ -130,17 +127,23 @@ impl State {
         }
     }
 
-    fn play_card(&mut self, suite: &Suite, value: usize) {
+    fn play_card(&mut self, card: &Card) {
         // TODO Error handling for unwrap
-        self.played_cards.get_mut(suite).unwrap().push(value);
+        let suite = card.suite;
+        let value = card.value;
+        self.played_cards.get_mut(&suite).unwrap().push(value);
     }
 
     fn draw(&mut self, player_id: usize) {
         // TODO Error handling for unwrap
+        let card = self.deck.pop().unwrap();
+        if player_id != self.config.client_player {
+            self.display.draw(player_id, &card);
+        }
         self.player_hands
             .get_mut(player_id)
             .unwrap()
-            .push(self.deck.pop().unwrap());
+            .push(card);
     }
 
     fn discard(&mut self, player_id: usize, index: usize) -> Card {
@@ -155,12 +158,14 @@ impl State {
         hand.remove(index)
     }
 
-    fn valid_to_play(&self, suite: &Suite, value: usize) -> bool {
+    fn valid_to_play(&self, card: &Card) -> bool {
+        let suite = card.suite;
+        let value = card.value;
         // TODO Error handling for unwrap
-        if self.played_cards.get(suite).unwrap().len() == 0 && value == 1 {
+        if self.played_cards.get(&suite).unwrap().len() == 0 && value == 1 {
             true
-        } else if self.played_cards.get(suite).unwrap().len() > 0 {
-            *self.played_cards.get(suite).unwrap().last().unwrap() == value - 1
+        } else if self.played_cards.get(&suite).unwrap().len() > 0 {
+            *self.played_cards.get(&suite).unwrap().last().unwrap() == value - 1
         } else {
             false
         }
@@ -173,32 +178,26 @@ impl State {
             HintType::SuiteType(hint_suite) => {
                 let hand = self.player_hands.get(receiver_id).unwrap();
                 let mut matched_suite: Vec<usize> = Vec::new();
-                for (i, &Card(suite, _)) in hand.iter().enumerate() {
+                // TODO: does this destructuring work?
+                for (i, ref card) in hand.iter().enumerate() {
+                    let suite = card.suite;
                     if suite == hint_suite {
                         matched_suite.push(i);
                     }
                 }
-
-                println!("Player {} has {} {} cards at indices: {}.",
-                         receiver_id,
-                         matched_suite.len(),
-                         self.config.suite_name_map.get(&hint_suite).unwrap(),
-                         matched_suite.iter().format(", "));
+                self.display.hint_suite(receiver_id, hint_suite, &matched_suite);
             }
             HintType::Number(hint_value) => {
                 let hand = self.player_hands.get(receiver_id).unwrap();
                 let mut matched_value: Vec<usize> = Vec::new();
-                for (i, &Card(_, value)) in hand.iter().enumerate() {
+                for (i, ref card) in hand.iter().enumerate() {
+                    let value = card.value;
                     if value == hint_value {
                         matched_value.push(i);
                     }
                 }
 
-                println!("Player {} has {} cards numbered {}: {}",
-                         receiver_id,
-                         matched_value.len(),
-                         hint_value,
-                         matched_value.iter().format(", "));
+                self.display.hint_number(receiver_id, hint_value, &matched_value);
             }
         }
     }
@@ -219,46 +218,8 @@ impl State {
     }
     */
 
-    // TODO: "Template-ize" on a Player, calling "get_command"
-    /*
-    fn get_player_action(&self, player_id: usize) -> Action {
-        // TODO Better solution for "type erasure" so that we can support an
-        // arbitrary configuration of players
-        // and simply call get_command on the player ID
-        if player_id == self.config.client_player {
-            CommandLinePlayer::get_command(player_id, &self.config)
-        } else {
-            NaiveAIPlayer::get_command(player_id, &self.config)
-        }
-    }
-    */
-
     fn score(&self) -> usize {
         self.played_cards.values().map(|v| v.len()).sum()
-    }
-
-    fn print(&self) {
-        for player_id in 0..self.config.n_players {
-            println!("Player {}:", player_id);
-            if player_id == self.config.client_player {
-                println!("\tHIDDEN");
-                continue;
-            }
-            for &Card(suite, value) in self.player_hands.get(player_id).unwrap() {
-                print!("\t");
-                print!("{}{} ",
-                       self.config.suite_name_map.get(&suite).unwrap(),
-                       value);
-                print!("\n");
-            }
-        }
-        println!("Fuses: {}", self.fuses);
-        println!("Information tokens: {}", self.information_tokens);
-    }
-
-    fn player_action_update<T : Player>(&self, player_id: usize, player: &T) -> Action {
-        player.state_update(self);
-        player.get_command(player_id, &self.config)
     }
 
     fn unwrap_player<'a>(&self, player_tag: &'a PlayerType) -> &'a Player {
@@ -269,27 +230,32 @@ impl State {
         }
     }
 
+    fn get_action(&self, player_id: usize) -> Action {
+        let player_tag = self.config.players.get(player_id).unwrap();
+        let player = self.unwrap_player(player_tag);
+
+        // TODO
+        // player.state_update(&self);
+        player.get_command(player_id, &self.config)
+    }
+
     pub fn game_loop(&mut self) {
         let mut status = Status::InProgress;
         loop {
             match status {
                 Status::InProgress => {
-                    for player_id in 0..self.config.n_players {
-                        // print!("{}[2J", 27 as char);
-                        self.print();
-                        let player = self.unwrap_player(self.config.players.get(player_id).unwrap());
-
-                        //let action = self.player_action_update(player_id, player);
-                        let action = Action::Play { index: 0 };
-                        //status = self.turn(player_id, action);
+                    let n_players = self.config.players.len();
+                    for player_id in 0..n_players {
+                        self.display.show_state(self);
+                        let action = self.get_action(player_id);
+                        status = self.turn(player_id, action);
                     }
                 }
                 Status::Won => {
-                    println!("You Won!! Great job! Final score: {}", self.score());
+                    self.display.won(self.score());
                     break;
                 }
                 Status::Lost => {
-                    println!("Game over! Final score: {}", self.score());
                     break;
                 }
             }

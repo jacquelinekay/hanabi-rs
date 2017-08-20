@@ -21,9 +21,9 @@ pub enum HintType {
 }
 
 pub enum Action {
-    Hint { receiver_id: usize, hint: HintType }, // Give a hint to player_id
-    Discard { index: usize }, // Discard the card at index
-    Play { index: usize }, // Play the card at index
+    Hint { receiver_id: usize, hint: HintType },
+    Discard { index: usize },
+    Play { index: usize },
 }
 
 pub enum Status {
@@ -33,7 +33,11 @@ pub enum Status {
 }
 
 // Cards have value between 1 and 5
-pub struct Card(pub Suite, pub usize);
+// pub struct Card(pub Suite, pub usize);
+pub struct Card {
+    pub suite: Suite,
+    pub value: usize,
+}
 
 pub type PlayerHand = Vec<Card>;
 
