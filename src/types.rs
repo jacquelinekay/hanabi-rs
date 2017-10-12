@@ -2,10 +2,9 @@ use std::vec::Vec;
 
 use super::player::{CommandLinePlayer, NaiveAIPlayer, NetworkPlayer};
 
+/*
 custom_derive! {
-    // TODO: Clone and Copy are possible antipatterns
-    #[derive(Clone, Copy, PartialEq, Eq, Hash,
-             IterVariants(SuiteVariants), IterVariantNames(SuitVariantNames))]
+    #[derive(PartialEq, Eq, Hash, IterVariants(SuiteVariants))]
     pub enum Suite {
         White,
         Yellow,
@@ -14,12 +13,24 @@ custom_derive! {
         Red,
     }
 }
+*/
 
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize)]
+pub enum Suite {
+    White,
+    Yellow,
+    Green,
+    Blue,
+    Red,
+}
+
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum HintType {
     SuiteType(Suite),
     Number(usize),
 }
 
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum Action {
     Hint { receiver_id: usize, hint: HintType },
     Discard { index: usize },

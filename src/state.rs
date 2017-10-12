@@ -1,28 +1,52 @@
 extern crate rand;
-extern crate itertools;
 
-use self::itertools::Itertools;
 use self::rand::Rng;
 use std::collections::HashMap;
 use std::iter;
 use super::config::GameConfig;
 use super::display::Display;
-use super::player::{Player, CommandLinePlayer, NaiveAIPlayer, NetworkPlayer};
+// use super::player::{Player, CommandLinePlayer, NaiveAIPlayer, NetworkPlayer};
+use super::player::Player;
 
 use super::types::{Action, Card, HintType, PlayerHand, PlayerType, Status, Suite};
+
+const SUITE_VARIANTS: [Suite; 5] = [Suite::White,
+                                    Suite::Yellow,
+                                    Suite::Red,
+                                    Suite::Green,
+                                    Suite::Blue];
+
+
+// This is pretty bad...
+fn unwrap_player<'a>(player_tag: &'a mut PlayerType) -> &'a mut Player {
+    match *player_tag {
+        PlayerType::CommandLine(ref mut player) => player,
+        PlayerType::NaiveAI(ref mut player) => player,
+        PlayerType::Network(ref mut player) => player,
+    }
+}
+
+fn get_action(config: &mut GameConfig, player_id: usize) -> Action {
+    let mut player_tag = config.players.get_mut(player_id).unwrap();
+    let mut player = unwrap_player(player_tag);
+
+    player.get_command(player_id)
+}
 
 fn shuffle_and_deal(n_players: usize) -> (Vec<Card>, Vec<PlayerHand>) {
     let mut deck: Vec<Card> = Vec::new();
 
-    for suite in Suite::iter_variants() {
-        deck.extend(iter::repeat(1).take(4).map(|value| Card{suite, value}));
+    // TODO: was using IterVariants macro for this, but it erased the primitive
+    // semantics of Suite, so we're using something less sophisticated now...
+    for suite in SUITE_VARIANTS.iter().cloned() {
+        deck.extend(iter::repeat(1).take(4).map(|value| Card { suite, value }));
 
         for i in 2..5 {
-            deck.extend(iter::repeat(i).take(3).map(|value| Card{suite, value}));
+            deck.extend(iter::repeat(i).take(3).map(|value| Card { suite, value }));
         }
         // TODO: wtf
         let value = 5;
-        deck.push(Card{suite, value});
+        deck.push(Card { suite, value });
     }
 
     rand::thread_rng().shuffle(deck.as_mut_slice());
@@ -54,9 +78,12 @@ impl<T: Display> State<T> {
     pub fn new(config: GameConfig, display: T) -> State<T> {
         let n_players = config.players.len();
         let (deck, player_hands) = shuffle_and_deal(n_players);
-        let played_cards = Suite::iter_variants()
-            .zip(iter::repeat(Vec::new()).take(Suite::iter_variants().len()))
-            .collect::<HashMap<Suite, Vec<usize>>>();
+        let mut played_cards: HashMap<Suite, Vec<usize>> = HashMap::new();
+        for suite_c in SUITE_VARIANTS.iter() {
+            let suite = *suite_c;
+            played_cards.insert(suite, Vec::new());
+        }
+
         State {
             // TODO: Consider randomizing player order?
             config: config,
@@ -99,7 +126,7 @@ impl<T: Display> State<T> {
 
                     self.draw(player_id);
                     // check win condition
-                    for suite in Suite::iter_variants() {
+                    for suite in SUITE_VARIANTS.iter() {
                         if self.played_cards.get(&suite).unwrap().len() != 5 {
                             return Status::InProgress;
                         }
@@ -129,9 +156,9 @@ impl<T: Display> State<T> {
 
     fn play_card(&mut self, card: &Card) {
         // TODO Error handling for unwrap
-        let suite = card.suite;
+        let ref suite = card.suite;
         let value = card.value;
-        self.played_cards.get_mut(&suite).unwrap().push(value);
+        self.played_cards.get_mut(suite).unwrap().push(value);
     }
 
     fn draw(&mut self, player_id: usize) {
@@ -140,10 +167,7 @@ impl<T: Display> State<T> {
         if player_id != self.config.client_player {
             self.display.draw(player_id, &card);
         }
-        self.player_hands
-            .get_mut(player_id)
-            .unwrap()
-            .push(card);
+        self.player_hands.get_mut(player_id).unwrap().push(card);
     }
 
     fn discard(&mut self, player_id: usize, index: usize) -> Card {
@@ -159,13 +183,13 @@ impl<T: Display> State<T> {
     }
 
     fn valid_to_play(&self, card: &Card) -> bool {
-        let suite = card.suite;
+        let ref suite = card.suite;
         let value = card.value;
         // TODO Error handling for unwrap
-        if self.played_cards.get(&suite).unwrap().len() == 0 && value == 1 {
+        if self.played_cards.get(suite).unwrap().len() == 0 && value == 1 {
             true
-        } else if self.played_cards.get(&suite).unwrap().len() > 0 {
-            *self.played_cards.get(&suite).unwrap().last().unwrap() == value - 1
+        } else if self.played_cards.get(suite).unwrap().len() > 0 {
+            *self.played_cards.get(suite).unwrap().last().unwrap() == value - 1
         } else {
             false
         }
@@ -180,12 +204,13 @@ impl<T: Display> State<T> {
                 let mut matched_suite: Vec<usize> = Vec::new();
                 // TODO: does this destructuring work?
                 for (i, ref card) in hand.iter().enumerate() {
-                    let suite = card.suite;
-                    if suite == hint_suite {
+                    let ref suite = card.suite;
+                    if *suite == hint_suite {
                         matched_suite.push(i);
                     }
                 }
-                self.display.hint_suite(receiver_id, hint_suite, &matched_suite);
+                self.display
+                    .hint_suite(receiver_id, hint_suite, &matched_suite);
             }
             HintType::Number(hint_value) => {
                 let hand = self.player_hands.get(receiver_id).unwrap();
@@ -197,7 +222,8 @@ impl<T: Display> State<T> {
                     }
                 }
 
-                self.display.hint_number(receiver_id, hint_value, &matched_value);
+                self.display
+                    .hint_number(receiver_id, hint_value, &matched_value);
             }
         }
     }
@@ -222,23 +248,6 @@ impl<T: Display> State<T> {
         self.played_cards.values().map(|v| v.len()).sum()
     }
 
-    fn unwrap_player<'a>(&self, player_tag: &'a PlayerType) -> &'a Player {
-        match *player_tag {
-            PlayerType::CommandLine(ref player) => player,
-            PlayerType::NaiveAI(ref player) => player,
-            PlayerType::Network(ref player) => player
-        }
-    }
-
-    fn get_action(&self, player_id: usize) -> Action {
-        let player_tag = self.config.players.get(player_id).unwrap();
-        let player = self.unwrap_player(player_tag);
-
-        // TODO
-        // player.state_update(&self);
-        player.get_command(player_id, &self.config)
-    }
-
     pub fn game_loop(&mut self) {
         let mut status = Status::InProgress;
         loop {
@@ -247,7 +256,7 @@ impl<T: Display> State<T> {
                     let n_players = self.config.players.len();
                     for player_id in 0..n_players {
                         self.display.show_state(self);
-                        let action = self.get_action(player_id);
+                        let action = get_action(&mut self.config, player_id);
                         status = self.turn(player_id, action);
                     }
                 }

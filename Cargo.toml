@@ -12,3 +12,12 @@ custom_derive = "0.1.7"
 enum_derive = "0.1.7"
 itertools = "0.6.1"
 rand = "0.3"
+
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+
+futures = "0.1.11"
+tarpc = "0.8.0"
+tarpc-plugins = "0.1.1"
+tokio-core = "0.1.6"

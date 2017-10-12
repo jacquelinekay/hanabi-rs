@@ -1,27 +1,31 @@
 extern crate hanabi;
+extern crate serde_json;
 
-use std::collections::HashMap;
+use std::env;
+use std::fs::File;
+use std::io::prelude::*;
 
-use hanabi::config::GameConfig;
+use hanabi::config::{default_game_config, GameConfig};
 use hanabi::display::CommandLineDisplay;
-use hanabi::player::{CommandLinePlayer, NaiveAIPlayer};
 use hanabi::state::State;
-use hanabi::types::{PlayerType, Suite};
 
 fn main() {
-    // TODO: Convenience initializer, read from file
-    let players = vec![
-        PlayerType::CommandLine(CommandLinePlayer),
-        PlayerType::NaiveAI(NaiveAIPlayer),
-        PlayerType::NaiveAI(NaiveAIPlayer)];
+    let config: GameConfig = env::args()
+        .nth(1)
+        .and_then(|filename| File::open(filename).ok())
+        .and_then(|mut file| {
+                      let mut data = String::new();
+                      // TODO: check result or ignore warning
+                      file.read_to_string(&mut data);
+                      Some(data)
+                  })
+        .and_then(|data| serde_json::from_str(data.as_str()).ok())
+        .unwrap_or_else(default_game_config);
 
-    // TODO this suite_name_map stuff is kinda terrible
-    let suite_name_map = Suite::iter_variants()
-                .zip(Suite::iter_variant_names().map(|n| n.chars().nth(0)
-                .unwrap())).collect::<HashMap<Suite, char>>();
+    // Establish player connections in initialization of NetworkPlayer (?)
+    // Need to determine if player is host or not.
 
-    let config = GameConfig::new(0, players);
-    let display = CommandLineDisplay{suite_name_map};
+    let display = CommandLineDisplay {};
     let mut game = State::new(config, display);
     game.game_loop();
 }

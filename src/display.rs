@@ -1,10 +1,10 @@
 extern crate itertools;
 
 use self::itertools::Itertools;
-use std::collections::HashMap;
 
 use super::state::State;
-use super::types::{Action, Card, HintType, PlayerHand, PlayerType, Status, Suite};
+// use super::types::{Action, Card, HintType, PlayerHand, PlayerType, Status, Suite};
+use super::types::{Card, Suite};
 
 pub trait Display {
     fn lost(&self, reason: &str, score: usize);
@@ -26,9 +26,18 @@ pub trait Display {
     fn show_state<T: Display>(&self, state: &State<T>);
 }
 
-pub struct CommandLineDisplay {
-    pub suite_name_map: HashMap<Suite, char>
+// TODO
+fn suite_name_map(suite: &Suite) -> char {
+    match *suite {
+        Suite::White => 'W',
+        Suite::Yellow => 'Y',
+        Suite::Green => 'G',
+        Suite::Red => 'R',
+        Suite::Blue => 'B',
+    }
 }
+
+pub struct CommandLineDisplay;
 
 impl Display for CommandLineDisplay {
     fn lost(&self, reason: &str, score: usize) {
@@ -48,21 +57,21 @@ impl Display for CommandLineDisplay {
     fn discard(&self, player_id: usize, card: &Card) {
         println!("Player {} discarded: {}{}",
                  player_id,
-                 self.suite_name_map.get(&card.suite).unwrap(),
+                 suite_name_map(&card.suite),
                  card.value);
     }
 
     fn draw(&self, player_id: usize, card: &Card) {
         println!("Player {} drew: {}{}",
                  player_id,
-                 self.suite_name_map.get(&card.suite).unwrap(),
+                 suite_name_map(&card.suite),
                  card.value);
     }
 
     fn play(&self, player_id: usize, card: &Card) {
         println!("Player {} played: {}{}",
                  player_id,
-                 self.suite_name_map.get(&card.suite).unwrap(),
+                 suite_name_map(&card.suite),
                  card.value);
     }
 
@@ -71,7 +80,7 @@ impl Display for CommandLineDisplay {
         println!("Player {} has {} {} cards at indices: {}.",
                  player_id,
                  matched.len(),
-                 self.suite_name_map.get(&suite).unwrap(),
+                 suite_name_map(&suite),
                  matched.iter().format(", "));
     }
 
@@ -94,9 +103,7 @@ impl Display for CommandLineDisplay {
             }
             for ref card in state.player_hands.get(player_id).unwrap() {
                 print!("\t");
-                print!("{}{} ",
-                       self.suite_name_map.get(&card.suite).unwrap(),
-                       card.value);
+                print!("{}{} ", suite_name_map(&card.suite), card.value);
                 print!("\n");
             }
         }
@@ -107,31 +114,25 @@ impl Display for CommandLineDisplay {
 
 pub struct GraphicalDisplay;
 
+// TODO
+/*
 impl Display for GraphicalDisplay {
-    fn lost(&self, reason: &str, score: usize) {
-    }
+    fn lost(&self, reason: &str, score: usize) {}
 
-    fn won(&self, score: usize) {
-    }
+    fn won(&self, score: usize) {}
 
-    fn fuse(&self, n_fuses: usize) {
-    }
+    fn fuse(&self, n_fuses: usize) {}
 
-    fn discard(&self, player_id: usize, card: &Card) {
-    }
+    fn discard(&self, player_id: usize, card: &Card) {}
 
-    fn draw(&self, player_id: usize, card: &Card) {
-    }
+    fn draw(&self, player_id: usize, card: &Card) {}
 
-    fn play(&self, player_id: usize, card: &Card) {
-    }
+    fn play(&self, player_id: usize, card: &Card) {}
 
-    fn hint_suite(&self, player_id: usize, suite: Suite, matched: &Vec<usize>) {
-    }
+    fn hint_suite(&self, player_id: usize, suite: Suite, matched: &Vec<usize>) {}
 
-    fn hint_number(&self, player_id: usize, number: usize, matched: &Vec<usize>) {
-    }
+    fn hint_number(&self, player_id: usize, number: usize, matched: &Vec<usize>) {}
 
-    fn show_state<T: Display>(&self, state: &State<T>) {
-    }
+    fn show_state<T: Display>(&self, state: &State<T>) {}
 }
+*/
